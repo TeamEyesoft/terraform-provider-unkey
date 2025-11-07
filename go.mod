@@ -1,4 +1,4 @@
-module terraform-provider-unkey
+module github.com/TeamEyesoft/terraform-provider-unkey
 
 go 1.24.0
 
