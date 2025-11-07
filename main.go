@@ -10,7 +10,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 
-	"terraform-provider-unkey/internal/provider"
+	"github.com/TeamEyesoft/terraform-provider-unkey/internal/provider"
 )
 
 // Run "go generate" to format example terraform files and generate the docs for the registry/website
