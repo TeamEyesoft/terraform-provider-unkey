@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/TeamEyesoft/terraform-provider-unkey/internal/provider/conversions"
 	"github.com/TeamEyesoft/terraform-provider-unkey/internal/provider/models"
@@ -93,7 +92,6 @@ func (r *keyResource) Create(ctx context.Context, req resource.CreateRequest, re
 	// Map response body to schema and populate Computed attribute values
 	plan.KeyId = types.StringValue(key.V2KeysCreateKeyResponseBody.Data.KeyID)
 	plan.Key = types.StringValue(key.V2KeysCreateKeyResponseBody.Data.Key)
-	plan.LastUpdated = types.StringValue(time.Now().Format(time.RFC850))
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
@@ -238,9 +236,6 @@ func (r *keyResource) Update(ctx context.Context, req resource.UpdateRequest, re
 
 	state.Ratelimits, diags = conversions.RatelimitsFromAPI(ctx, data.Ratelimits)
 	resp.Diagnostics.Append(diags...)
-
-	// Update last_updated timestamp
-	plan.LastUpdated = types.StringValue(time.Now().Format(time.RFC850))
 
 	// Set state
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)

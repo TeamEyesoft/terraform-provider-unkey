@@ -3,12 +3,12 @@
 page_title: "unkey_identity Resource - unkey"
 subcategory: ""
 description: |-
-  Manages an API resource.
+  Manages an Identity resource.
 ---
 
 # unkey_identity (Resource)
 
-Manages an API resource.
+Manages an Identity resource.
 
 
 
@@ -17,9 +17,73 @@ Manages an API resource.
 
 ### Required
 
-- `name` (String) Unique identifier of the API resource.
+- `external_id` (String) Creates an identity using your system's unique identifier for a user, organization, or entity.
+Must be stable and unique across your workspace - duplicate externalIds return CONFLICT errors.
+This identifier links Unkey identities to your authentication system, database records, or tenant structure.
+
+Avoid changing externalIds after creation as this breaks the link between your systems.
+Use consistent identifier patterns across your application for easier management and debugging.
+Accepts letters, numbers, underscores, dots, and hyphens for flexible identifier formats.
+Essential for implementing proper multi-tenant isolation and user-specific rate limiting.
+
+### Optional
+
+- `meta` (String) Stores arbitrary JSON metadata returned during key verification for contextual information.
+Eliminates additional database lookups during verification, improving performance for stateless services.
+Avoid storing sensitive data here as it's returned in verification responses.
+
+Large metadata objects increase verification latency and should stay under 10KB total size.
+Use this for subscription details, feature flags, user preferences, and organization information.
+Metadata is returned as-is whenever keys associated with this identity are verified.
+- `ratelimits` (Attributes List) Defines shared rate limits that apply to all keys belonging to this identity.
+Prevents abuse by users with multiple keys by enforcing consistent limits across their entire key portfolio.
+Essential for implementing fair usage policies and tiered access levels in multi-tenant applications.
+
+Rate limit counters are shared across all keys with this identity, regardless of how many keys the user creates.
+During verification, specify which named limits to check for enforcement.
+Identity rate limits supplement any key-specific rate limits that may also be configured.
+
+Each named limit can have different thresholds and windows
+When verifying keys, you can specify which limits you want to use and all keys attached to this identity will share the limits, regardless of which specific key is used. (see [below for nested schema](#nestedatt--ratelimits))
 
 ### Read-Only
 
-- `api_id` (String) Unique identifier of the API resource.
-- `last_updated` (String) Timestamp of the last Terraform update of the API.
+- `id` (String) The id of the Identity.
+This is a unique identifier assigned to the Identity upon creation.
+
+<a id="nestedatt--ratelimits"></a>
+### Nested Schema for `ratelimits`
+
+Required:
+
+- `auto_apply` (Boolean) Whether this ratelimit should be automatically applied when verifying a key.
+- `duration` (Number) The duration for each ratelimit window in milliseconds.
+
+This controls how long the rate limit counter accumulates before resetting. Common values include:
+
+- 1000 (1 second): For strict per-second limits on high-frequency operations
+- 60000 (1 minute): For moderate API usage control
+- 3600000 (1 hour): For less frequent but costly operations
+- 86400000 (24 hours): For daily quotas
+
+Shorter windows provide more frequent resets but may allow large burst usage. Longer windows provide more consistent usage patterns but take longer to reset after limit exhaustion.
+- `limit` (Number) The maximum number of operations allowed within the specified time window.
+
+When this limit is reached, verification requests will fail with code=RATE_LIMITED until the window resets. The limit should reflect:
+
+- Your infrastructure capacity and scaling limitations
+- Fair usage expectations for your service
+- Different tier levels for various user types
+- The relative cost of the operations being limited
+
+Higher values allow more frequent access but may impact service performance.
+- `name` (String) The name of this rate limit. This name is used to identify which limit to check during key verification.
+
+Best practices for limit names:
+
+- Use descriptive, semantic names like 'api_requests', 'heavy_operations', or 'downloads'
+- Be consistent with naming conventions across your application
+- Create separate limits for different resource types or operation costs
+- Consider using namespaced names for better organization (e.g., 'files.downloads', 'compute.training')
+
+You will reference this exact name when verifying keys to check against this specific limit.

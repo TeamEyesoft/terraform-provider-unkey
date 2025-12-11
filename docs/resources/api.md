@@ -17,9 +17,20 @@ Manages an API resource.
 
 ### Required
 
-- `name` (String) Unique identifier of the API resource.
+- `name` (String) Unique identifier for this API namespace within your workspace.
+Use descriptive names like 'payment-service-prod' or 'user-api-dev' to clearly identify purpose and environment.
 
 ### Read-Only
 
-- `id` (String) Unique identifier of the API resource.
-- `last_updated` (String) Timestamp of the last Terraform update of the API.
+- `id` (String) The unique identifier assigned to the newly created API.
+Use this ID for all subsequent operations including key creation, verification, and API management.
+Always begins with 'api_' followed by a unique alphanumeric sequence.
+
+Store this ID securely as it's required when:
+
+- Creating API keys within this namespace
+- Verifying keys associated with this API
+- Managing API settings and metadata
+- Listing keys belonging to this API
+
+This identifier is permanent and cannot be changed after creation.

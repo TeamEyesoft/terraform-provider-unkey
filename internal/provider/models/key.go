@@ -21,5 +21,4 @@ type KeyResourceModel struct {
 	Enabled           types.Bool   `tfsdk:"enabled"`
 	Recoverable       types.Bool   `tfsdk:"recoverable"`
 	PermanentDeletion types.Bool   `tfsdk:"permanent_deletion"`
-	LastUpdated       types.String `tfsdk:"last_updated"`
 }

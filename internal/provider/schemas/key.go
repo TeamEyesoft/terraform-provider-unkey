@@ -297,10 +297,6 @@ Most applications should use soft deletion to maintain audit trails and prevent 
 				Required: false,
 				Optional: true,
 			},
-			"last_updated": schema.StringAttribute{
-				Description: "Timestamp of the last Terraform update of the API.",
-				Computed:    true,
-			},
 		},
 	}
 }

@@ -111,7 +111,6 @@ This is NOT the actual API key, but a reference ID used for management operation
 Store this ID in your database to reference the key later. This ID is not sensitive and can be logged or displayed in dashboards.
 - `key` (String, Sensitive) The full generated API key that should be securely provided to your user.
 SECURITY WARNING: This is the only time you'll receive the complete key - Unkey only stores a securely hashed version. Never log or store this value in your own systems; provide it directly to your end user via secure channels. After this API call completes, this value cannot be retrieved again (unless created with recoverable=true).
-- `last_updated` (String) Timestamp of the last Terraform update of the API.
 
 <a id="nestedatt--credits"></a>
 ### Nested Schema for `credits`
