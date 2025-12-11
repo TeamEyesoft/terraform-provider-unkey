@@ -6,12 +6,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/TeamEyesoft/terraform-provider-unkey/internal/provider/models"
+	"github.com/TeamEyesoft/terraform-provider-unkey/internal/provider/schemas"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	unkey "github.com/unkeyed/sdks/api/go/v2"
 	"github.com/unkeyed/sdks/api/go/v2/models/components"
@@ -28,13 +25,6 @@ func NewRoleResource() resource.Resource {
 	return &roleResource{}
 }
 
-// roleResourceModel maps the resource schema data.
-type roleResourceModel struct {
-	RoleId      types.String `tfsdk:"id"`
-	Name        types.String `tfsdk:"name"`
-	Description types.String `tfsdk:"description"`
-}
-
 // roleResource is the resource implementation.
 type roleResource struct {
 	client *unkey.Unkey
@@ -47,74 +37,22 @@ func (r *roleResource) Metadata(_ context.Context, req resource.MetadataRequest,
 
 // Schema defines the schema for the resource.
 func (r *roleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages a Role resource.",
-		Attributes: map[string]schema.Attribute{
-			"id": schema.StringAttribute{
-				Description: "Unique identifier of the Role resource.",
-				Computed:    true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"name": schema.StringAttribute{
-				MarkdownDescription: `The unique name for this role. Must be unique within your workspace and clearly indicate the role's purpose. Use descriptive names like 'admin', 'editor', or 'billing_manager'.
-
-Examples: 'admin.billing', 'support.readonly', 'developer.api', 'manager.analytics'`,
-				Required: true,
-				Validators: []validator.String{
-					stringvalidator.LengthBetween(1, 512),
-				},
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
-			"description": schema.StringAttribute{
-				MarkdownDescription: `Provides comprehensive documentation of what this role encompasses and what access it grants.
-Include information about the intended use case, what permissions should be assigned, and any important considerations.
-This internal documentation helps team members understand role boundaries and security implications.
-Not visible to end users - designed for administration teams and access control audits.
-
-Consider documenting:
-
-- The role's intended purpose and scope
-- What types of users should receive this role
-- What permissions are typically associated with it
-- Any security considerations or limitations
-- Related roles that might be used together`,
-				Required: false,
-				Optional: true,
-				Validators: []validator.String{
-					stringvalidator.LengthAtMost(2048),
-				},
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
-		},
-	}
+	resp.Schema = schemas.RoleSchema()
 }
 
 // Create a new resource.
 func (r *roleResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	// Retrieve values from plan
-	var plan roleResourceModel
+	var plan models.RoleResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Create new Permission
-	var description *string
-	if !plan.Description.IsNull() {
-		desc := plan.Description.ValueString()
-		description = &desc
-	}
-
 	role, err := r.client.Permissions.CreateRole(ctx, components.V2PermissionsCreateRoleRequestBody{
 		Name:        plan.Name.ValueString(),
-		Description: description,
+		Description: plan.Description.ValueStringPointer(),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -138,7 +76,7 @@ func (r *roleResource) Create(ctx context.Context, req resource.CreateRequest, r
 // Read resource information.
 func (r *roleResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	// Get current state
-	var state roleResourceModel
+	var state models.RoleResourceModel
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -157,13 +95,11 @@ func (r *roleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
+	data := api.V2PermissionsGetRoleResponseBody.GetData()
+
 	// Overwrite items with refreshed state
-	state.Name = types.StringValue(api.V2PermissionsGetRoleResponseBody.GetData().Name)
-	if api.V2PermissionsGetRoleResponseBody.GetData().Description != nil {
-		state.Description = types.StringValue(*api.V2PermissionsGetRoleResponseBody.GetData().Description)
-	} else {
-		state.Description = types.StringNull()
-	}
+	state.Name = types.StringValue(data.Name)
+	state.Description = types.StringPointerValue(data.Description)
 
 	// Set refreshed state
 	diags = resp.State.Set(ctx, &state)
@@ -178,7 +114,7 @@ func (r *roleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 
 func (r *roleResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	// Retrieve values from state
-	var state roleResourceModel
+	var state models.RoleResourceModel
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
