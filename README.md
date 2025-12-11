@@ -1,8 +1,13 @@
 # Unkey Terraform Provider
 
-WIP
-
 Unofficial provider for [Unkey](unkey.com).
+
+## Implemented resources
+
+- APIs
+- Identities
+- Keys
+- Permissions / Roles
 
 ## Build provider
 
