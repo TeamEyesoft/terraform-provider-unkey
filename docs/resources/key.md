@@ -70,7 +70,7 @@ Returned during verification to identify the key owner without additional databa
 Essential for user-specific analytics, billing, and multi-tenant key management.
 Use your primary user ID, organization ID, or tenant ID for best results.
 Accepts letters, numbers, underscores, dots, and hyphens for flexible identifier formats.
-- `meta` (Dynamic) Links this key to a user or entity in your system using your own identifier.
+- `meta` (String) Links this key to a user or entity in your system using your own identifier.
 Returned during verification to identify the key owner without additional database lookups.
 Essential for user-specific analytics, billing, and multi-tenant key management.
 Use your primary user ID, organization ID, or tenant ID for best results.
@@ -78,6 +78,13 @@ Accepts letters, numbers, underscores, dots, and hyphens for flexible identifier
 - `name` (String) Sets a human-readable identifier for internal organization and dashboard display.
 Never exposed to end users, only visible in management interfaces and API responses.
 Avoid generic names like "API Key" when managing multiple keys for the same user or service.
+- `permanent_deletion` (Boolean) Controls deletion behavior between recoverable soft-deletion and irreversible permanent erasure.
+Soft deletion (default) preserves key data for potential recovery through direct database operations.
+Permanent deletion completely removes all traces including hash values and metadata with no recovery option.
+
+Use permanent deletion only for regulatory compliance (GDPR), resolving hash collisions, or when reusing identical key strings.
+Permanent deletion cannot be undone and may affect analytics data that references the deleted key.
+Most applications should use soft deletion to maintain audit trails and prevent accidental data loss.
 - `permissions` (List of String) Grants specific permissions directly to this key without requiring role membership.
 Wildcard permissions like 'documents.*' grant access to all sub-permissions including 'documents.read' and 'documents.write'.
 Direct permissions supplement any permissions inherited from assigned roles.
@@ -112,7 +119,6 @@ SECURITY WARNING: This is the only time you'll receive the complete key - Unkey 
 Required:
 
 - `remaining` (Number) Number of credits remaining (null for unlimited).
-- `total` (Number) Total number of credits allocated to this key.
 
 Optional:
 

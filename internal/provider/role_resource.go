@@ -58,16 +58,19 @@ func (r *roleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				},
 			},
 			"name": schema.StringAttribute{
-				Description: `The unique name for this role. Must be unique within your workspace and clearly indicate the role's purpose. Use descriptive names like 'admin', 'editor', or 'billing_manager'.
+				MarkdownDescription: `The unique name for this role. Must be unique within your workspace and clearly indicate the role's purpose. Use descriptive names like 'admin', 'editor', or 'billing_manager'.
 
 Examples: 'admin.billing', 'support.readonly', 'developer.api', 'manager.analytics'`,
 				Required: true,
 				Validators: []validator.String{
 					stringvalidator.LengthBetween(1, 512),
 				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"description": schema.StringAttribute{
-				Description: `Provides comprehensive documentation of what this role encompasses and what access it grants.
+				MarkdownDescription: `Provides comprehensive documentation of what this role encompasses and what access it grants.
 Include information about the intended use case, what permissions should be assigned, and any important considerations.
 This internal documentation helps team members understand role boundaries and security implications.
 Not visible to end users - designed for administration teams and access control audits.
@@ -78,12 +81,14 @@ Consider documenting:
 - What types of users should receive this role
 - What permissions are typically associated with it
 - Any security considerations or limitations
-- Related roles that might be used together
-`,
+- Related roles that might be used together`,
 				Required: false,
 				Optional: true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtMost(2048),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
 				},
 			},
 		},
@@ -169,7 +174,6 @@ func (r *roleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 }
 
 func (r *roleResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	return
 }
 
 func (r *roleResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

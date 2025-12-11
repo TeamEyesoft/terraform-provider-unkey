@@ -60,7 +60,7 @@ func (r *permissionResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				},
 			},
 			"name": schema.StringAttribute{
-				Description: `Creates a permission with this human-readable name that describes its purpose.
+				MarkdownDescription: `Creates a permission with this human-readable name that describes its purpose.
 Names must be unique within your workspace to prevent conflicts during assignment.
 Use clear, semantic names that developers can easily understand when building authorization logic.
 Consider using hierarchical naming conventions like 'resource.action' for better organization.
@@ -70,9 +70,12 @@ Examples: 'users.read', 'billing.write', 'analytics.view', 'admin.manage'`,
 				Validators: []validator.String{
 					stringvalidator.LengthBetween(1, 512),
 				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"slug": schema.StringAttribute{
-				Description: `Creates a URL-safe identifier for this permission that can be used in APIs and integrations.
+				MarkdownDescription: `Creates a URL-safe identifier for this permission that can be used in APIs and integrations.
 Must start with a letter and contain only letters, numbers, periods, underscores, and hyphens.
 Slugs are often used in REST endpoints, configuration files, and external integrations.
 Should closely match the name but in a format suitable for technical usage.
@@ -88,9 +91,12 @@ Keep slugs concise but descriptive for better developer experience.`,
 					),
 					stringvalidator.LengthBetween(1, 128),
 				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"description": schema.StringAttribute{
-				Description: `Provides detailed documentation of what this permission grants access to.
+				MarkdownDescription: `Provides detailed documentation of what this permission grants access to.
 Include information about affected resources, allowed actions, and any important limitations.
 This internal documentation helps team members understand permission scope and security implications.
 Not visible to end users - designed for development teams and security audits.
@@ -100,12 +106,14 @@ Consider documenting:
 - What resources can be accessed
 - What operations are permitted
 - Any conditions or limitations
-- Related permissions that might be needed
-`,
+- Related permissions that might be needed`,
 				Required: false,
 				Optional: true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtMost(128),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
 				},
 			},
 		},
@@ -193,7 +201,6 @@ func (r *permissionResource) Read(ctx context.Context, req resource.ReadRequest,
 }
 
 func (r *permissionResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	return
 }
 
 func (r *permissionResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

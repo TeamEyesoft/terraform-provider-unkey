@@ -37,6 +37,9 @@ resource "unkey_key" "admin_key" {
   roles       = [unkey_role.role_admin.name]
   permissions = [unkey_permission.read_documents.slug]
   enabled     = true
+  meta = jsonencode({
+    user_id = "user-12345"
+  })
 }
 
 output "demo_order" {

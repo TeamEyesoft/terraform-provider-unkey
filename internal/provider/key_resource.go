@@ -4,12 +4,14 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -25,6 +27,30 @@ import (
 var (
 	_ resource.Resource              = &keyResource{}
 	_ resource.ResourceWithConfigure = &keyResource{}
+
+	creditsRefillAttrTypes = map[string]attr.Type{
+		"interval":   types.StringType,
+		"amount":     types.Int64Type,
+		"refill_day": types.Int64Type,
+	}
+
+	creditsAttrTypes = map[string]attr.Type{
+		"remaining": types.Int64Type,
+		"refill": types.ObjectType{
+			AttrTypes: creditsRefillAttrTypes,
+		},
+	}
+
+	ratelimitAttrTypes = map[string]attr.Type{
+		"name":       types.StringType,
+		"limit":      types.Int64Type,
+		"duration":   types.Int64Type,
+		"auto_apply": types.BoolType,
+	}
+
+	ratelimitObjectType = types.ObjectType{
+		AttrTypes: ratelimitAttrTypes,
+	}
 )
 
 // NewkeyResource is a helper function to simplify the provider implementation.
@@ -40,7 +66,6 @@ type keyCreditsRefillModel struct {
 
 type keyCreditsModel struct {
 	Remaining types.Int64  `tfsdk:"remaining"`
-	Total     types.Int64  `tfsdk:"total"`
 	Refill    types.Object `tfsdk:"refill"`
 }
 
@@ -53,22 +78,23 @@ type rateLimitModel struct {
 
 // apiResourceModel maps the resource schema data.
 type keyResourceModel struct {
-	KeyId       types.String  `tfsdk:"id"`
-	Key         types.String  `tfsdk:"key"`
-	ApiId       types.String  `tfsdk:"api_id"`
-	Prefix      types.String  `tfsdk:"prefix"`
-	Name        types.String  `tfsdk:"name"`
-	ByteLength  types.Int64   `tfsdk:"byte_length"`
-	ExternalId  types.String  `tfsdk:"external_id"`
-	Meta        types.Dynamic `tfsdk:"meta"`
-	Roles       types.List    `tfsdk:"roles"`
-	Permissions types.List    `tfsdk:"permissions"`
-	Expires     types.Int64   `tfsdk:"expires"`
-	Credits     types.Object  `tfsdk:"credits"`
-	Ratelimits  types.List    `tfsdk:"ratelimits"`
-	Enabled     types.Bool    `tfsdk:"enabled"`
-	Recoverable types.Bool    `tfsdk:"recoverable"`
-	LastUpdated types.String  `tfsdk:"last_updated"`
+	KeyId             types.String `tfsdk:"id"`
+	Key               types.String `tfsdk:"key"`
+	ApiId             types.String `tfsdk:"api_id"`
+	Prefix            types.String `tfsdk:"prefix"`
+	Name              types.String `tfsdk:"name"`
+	ByteLength        types.Int64  `tfsdk:"byte_length"`
+	ExternalId        types.String `tfsdk:"external_id"`
+	Meta              types.String `tfsdk:"meta"`
+	Roles             types.List   `tfsdk:"roles"`
+	Permissions       types.List   `tfsdk:"permissions"`
+	Expires           types.Int64  `tfsdk:"expires"`
+	Credits           types.Object `tfsdk:"credits"`
+	Ratelimits        types.List   `tfsdk:"ratelimits"`
+	Enabled           types.Bool   `tfsdk:"enabled"`
+	Recoverable       types.Bool   `tfsdk:"recoverable"`
+	LastUpdated       types.String `tfsdk:"last_updated"`
+	PermanentDeletion types.Bool   `tfsdk:"permanent_deletion"`
 }
 
 // keyResource is the resource implementation.
@@ -174,7 +200,7 @@ Accepts letters, numbers, underscores, dots, and hyphens for flexible identifier
 					stringvalidator.LengthBetween(1, 255),
 				},
 			},
-			"meta": schema.DynamicAttribute{
+			"meta": schema.StringAttribute{
 				MarkdownDescription: `Links this key to a user or entity in your system using your own identifier.
 Returned during verification to identify the key owner without additional database lookups.
 Essential for user-specific analytics, billing, and multi-tenant key management.
@@ -236,13 +262,6 @@ Omitting this field creates unlimited usage, while setting null is not allowed d
 				Attributes: map[string]schema.Attribute{
 					"remaining": schema.Int64Attribute{
 						Description: "Number of credits remaining (null for unlimited).",
-						Required:    true,
-						Validators: []validator.Int64{
-							int64validator.AtLeast(0),
-						},
-					},
-					"total": schema.Int64Attribute{ // TODO
-						Description: "Total number of credits allocated to this key.",
 						Required:    true,
 						Validators: []validator.Int64{
 							int64validator.AtLeast(0),
@@ -364,6 +383,17 @@ Only enable for development keys or when key recovery is absolutely necessary.`,
 				Required: false,
 				Optional: true,
 			},
+			"permanent_deletion": schema.BoolAttribute{
+				MarkdownDescription: `Controls deletion behavior between recoverable soft-deletion and irreversible permanent erasure.
+Soft deletion (default) preserves key data for potential recovery through direct database operations.
+Permanent deletion completely removes all traces including hash values and metadata with no recovery option.
+
+Use permanent deletion only for regulatory compliance (GDPR), resolving hash collisions, or when reusing identical key strings.
+Permanent deletion cannot be undone and may affect analytics data that references the deleted key.
+Most applications should use soft deletion to maintain audit trails and prevent accidental data loss.`,
+				Required: false,
+				Optional: true,
+			},
 			"last_updated": schema.StringAttribute{
 				Description: "Timestamp of the last Terraform update of the API.",
 				Computed:    true,
@@ -383,12 +413,11 @@ func (r *keyResource) Create(ctx context.Context, req resource.CreateRequest, re
 	}
 
 	request := components.V2KeysCreateKeyRequestBody{
-		APIID:      plan.ApiId.ValueString(),
-		Prefix:     plan.Prefix.ValueStringPointer(),
-		Name:       plan.Name.ValueStringPointer(),
-		ByteLength: plan.ByteLength.ValueInt64Pointer(),
-		ExternalID: plan.ExternalId.ValueStringPointer(),
-		// TODO: Meta
+		APIID:       plan.ApiId.ValueString(),
+		Prefix:      plan.Prefix.ValueStringPointer(),
+		Name:        plan.Name.ValueStringPointer(),
+		ByteLength:  plan.ByteLength.ValueInt64Pointer(),
+		ExternalID:  plan.ExternalId.ValueStringPointer(),
 		Expires:     plan.Expires.ValueInt64Pointer(),
 		Enabled:     plan.Enabled.ValueBoolPointer(),
 		Recoverable: plan.Recoverable.ValueBoolPointer(),
@@ -434,6 +463,16 @@ func (r *keyResource) Create(ctx context.Context, req resource.CreateRequest, re
 				Refill:    refillData,
 			}
 		}
+	}
+
+	if !plan.Meta.IsNull() {
+		var metaMap map[string]any
+		err := json.Unmarshal([]byte(plan.Meta.ValueString()), &metaMap)
+		if err != nil {
+			resp.Diagnostics.AddError("Invalid JSON in meta", err.Error())
+			return
+		}
+		request.Meta = metaMap
 	}
 
 	// Create new Key
@@ -484,7 +523,6 @@ func (r *keyResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	// Overwrite items with refreshed state
 	state.Name = types.StringValue(*key.V2KeysGetKeyResponseBody.GetData().Name)
 	state.Enabled = types.BoolValue(key.V2KeysGetKeyResponseBody.GetData().Enabled)
-	// TODO: Meta
 	expires := key.V2KeysGetKeyResponseBody.GetData().Expires
 	if expires != nil {
 		state.Expires = types.Int64Value(*expires)
@@ -501,9 +539,67 @@ func (r *keyResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	// TODO: Credits
-	// TODO: Ratelimits
-	// TODO: Identity
+	metaData := key.V2KeysGetKeyResponseBody.GetData().Meta
+	if metaData != nil {
+		jsonBytes, _ := json.Marshal(metaData)
+		state.Meta = types.StringValue(string(jsonBytes))
+	} else {
+		state.Meta = types.StringNull()
+	}
+	credits := key.V2KeysGetKeyResponseBody.GetData().Credits
+	if credits != nil {
+		// Build refill object
+		var refillValue types.Object
+		if credits.Refill != nil {
+			refillModel := keyCreditsRefillModel{
+				Interval:  types.StringValue(string(credits.Refill.Interval)),
+				Amount:    types.Int64Value(credits.Refill.Amount),
+				RefillDay: types.Int64PointerValue(credits.Refill.RefillDay),
+			}
+
+			refillValue, diags = types.ObjectValueFrom(ctx, creditsRefillAttrTypes, refillModel)
+			resp.Diagnostics.Append(diags...)
+		} else {
+			refillValue = types.ObjectNull(creditsRefillAttrTypes)
+		}
+
+		// Build credits object
+		creditsModel := keyCreditsModel{
+			Remaining: types.Int64PointerValue(credits.Remaining),
+			Refill:    refillValue,
+		}
+
+		state.Credits, diags = types.ObjectValueFrom(ctx, creditsAttrTypes, creditsModel)
+		resp.Diagnostics.Append(diags...)
+	} else {
+		state.Credits = types.ObjectNull(creditsAttrTypes)
+	}
+
+	ratelimits := key.V2KeysGetKeyResponseBody.GetData().Ratelimits
+	if len(ratelimits) > 0 {
+		ratelimitModels := make([]rateLimitModel, len(ratelimits))
+
+		for i, rl := range ratelimits {
+			ratelimitModels[i] = rateLimitModel{
+				Name:      types.StringValue(rl.Name),
+				Limit:     types.Int64Value(rl.Limit),
+				Duration:  types.Int64Value(rl.Duration),
+				AutoApply: types.BoolValue(rl.AutoApply),
+			}
+		}
+
+		state.Ratelimits, diags = types.ListValueFrom(ctx, ratelimitObjectType, ratelimitModels)
+		resp.Diagnostics.Append(diags...)
+	} else {
+		state.Ratelimits = types.ListNull(ratelimitObjectType)
+	}
+
+	identity := key.V2KeysGetKeyResponseBody.GetData().Identity
+	if identity != nil {
+		state.ExternalId = types.StringValue(identity.ExternalID)
+	} else {
+		state.ExternalId = types.StringNull()
+	}
 
 	// Set refreshed state
 	diags = resp.State.Set(ctx, &state)
@@ -514,8 +610,230 @@ func (r *keyResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 }
 
 func (r *keyResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	// TODO
-	return
+	// Get current state and plan
+	var state, plan keyResourceModel
+	diags := req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	keyId := state.KeyId.ValueString()
+
+	// Build update request - only include fields that can be updated
+	request := components.V2KeysUpdateKeyRequestBody{
+		KeyID: keyId,
+	}
+
+	// Check what changed and update accordingly
+
+	// Update name
+	if !plan.Name.Equal(state.Name) && !plan.Name.IsNull() {
+		request.Name = plan.Name.ValueStringPointer()
+	}
+
+	// Update enabled status
+	if !plan.Enabled.Equal(state.Enabled) && !plan.Enabled.IsNull() {
+		request.Enabled = plan.Enabled.ValueBoolPointer()
+	}
+
+	// Update expires
+	if !plan.Expires.Equal(state.Expires) {
+		request.Expires = plan.Expires.ValueInt64Pointer()
+	}
+
+	// Update meta
+	if !plan.Meta.IsNull() {
+		var metaMap map[string]any
+		err := json.Unmarshal([]byte(plan.Meta.ValueString()), &metaMap)
+		if err != nil {
+			resp.Diagnostics.AddError("Invalid JSON in meta", err.Error())
+			return
+		}
+		request.Meta = metaMap
+	}
+
+	// Update roles
+	if !plan.Roles.Equal(state.Roles) {
+		if !plan.Roles.IsNull() && !plan.Roles.IsUnknown() {
+			var roles []string
+			diags := plan.Roles.ElementsAs(ctx, &roles, false)
+			resp.Diagnostics.Append(diags...)
+			if !resp.Diagnostics.HasError() {
+				request.Roles = roles
+			}
+		} else {
+			request.Roles = []string{}
+		}
+	}
+
+	// Update permissions
+	if !plan.Permissions.Equal(state.Permissions) {
+		if !plan.Permissions.IsNull() && !plan.Permissions.IsUnknown() {
+			var permissions []string
+			diags := plan.Permissions.ElementsAs(ctx, &permissions, false)
+			resp.Diagnostics.Append(diags...)
+			if !resp.Diagnostics.HasError() {
+				request.Permissions = permissions
+			}
+		} else {
+			request.Permissions = []string{}
+		}
+	}
+
+	// Update credits
+	if !plan.Credits.Equal(state.Credits) {
+		if !plan.Credits.IsNull() && !plan.Credits.IsUnknown() {
+			var credits keyCreditsModel
+			diags := plan.Credits.As(ctx, &credits, basetypes.ObjectAsOptions{})
+			resp.Diagnostics.Append(diags...)
+			if !resp.Diagnostics.HasError() {
+				var refillData *components.UpdateKeyCreditsRefill
+
+				if !credits.Refill.IsNull() && !credits.Refill.IsUnknown() {
+					var refill keyCreditsRefillModel
+					diags := credits.Refill.As(ctx, &refill, basetypes.ObjectAsOptions{})
+					resp.Diagnostics.Append(diags...)
+					if !resp.Diagnostics.HasError() {
+						refillData = &components.UpdateKeyCreditsRefill{
+							Interval:  components.UpdateKeyCreditsRefillInterval(refill.Interval.ValueString()),
+							Amount:    refill.Amount.ValueInt64(),
+							RefillDay: refill.RefillDay.ValueInt64Pointer(),
+						}
+					}
+				}
+
+				request.Credits = &components.UpdateKeyCreditsData{
+					Remaining: credits.Remaining.ValueInt64Pointer(),
+					Refill:    refillData,
+				}
+			}
+		} else {
+			request.Credits = nil
+		}
+	}
+
+	// Update ratelimits
+	if !plan.Ratelimits.Equal(state.Ratelimits) {
+		if !plan.Ratelimits.IsNull() && !plan.Ratelimits.IsUnknown() {
+			var ratelimits []rateLimitModel
+			diags := plan.Ratelimits.ElementsAs(ctx, &ratelimits, false)
+			resp.Diagnostics.Append(diags...)
+			if !resp.Diagnostics.HasError() {
+				request.Ratelimits = make([]components.RatelimitRequest, len(ratelimits))
+				for i, rl := range ratelimits {
+					autoApply := rl.AutoApply.ValueBool()
+					request.Ratelimits[i] = components.RatelimitRequest{
+						Name:      rl.Name.ValueString(),
+						Limit:     rl.Limit.ValueInt64(),
+						Duration:  rl.Duration.ValueInt64(),
+						AutoApply: &autoApply,
+					}
+				}
+			}
+		} else {
+			request.Ratelimits = []components.RatelimitRequest{}
+		}
+	}
+
+	// Make the API call
+	_, err := r.client.Keys.UpdateKey(ctx, request)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error updating key",
+			"Could not update key "+keyId+": "+err.Error(),
+		)
+		return
+	}
+
+	// Read back the updated key to get the current state
+	key, err := r.client.Keys.GetKey(ctx, components.V2KeysGetKeyRequestBody{
+		KeyID: keyId,
+	})
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error reading updated key",
+			"Could not read key after update "+keyId+": "+err.Error(),
+		)
+		return
+	}
+
+	// Update state with API response
+	plan.Name = types.StringPointerValue(key.V2KeysGetKeyResponseBody.GetData().Name)
+	plan.Enabled = types.BoolValue(key.V2KeysGetKeyResponseBody.GetData().Enabled)
+
+	expires := key.V2KeysGetKeyResponseBody.GetData().Expires
+	if expires != nil {
+		plan.Expires = types.Int64Value(*expires)
+	} else {
+		plan.Expires = types.Int64Null()
+	}
+
+	plan.Permissions, diags = types.ListValueFrom(ctx, types.StringType, key.V2KeysGetKeyResponseBody.GetData().Permissions)
+	resp.Diagnostics.Append(diags...)
+
+	plan.Roles, diags = types.ListValueFrom(ctx, types.StringType, key.V2KeysGetKeyResponseBody.GetData().Roles)
+	resp.Diagnostics.Append(diags...)
+
+	metaData := key.V2KeysGetKeyResponseBody.GetData().Meta
+	if metaData != nil {
+		jsonBytes, _ := json.Marshal(metaData)
+		plan.Meta = types.StringValue(string(jsonBytes))
+	} else {
+		plan.Meta = types.StringNull()
+	}
+
+	// Convert Credits
+	credits := key.V2KeysGetKeyResponseBody.GetData().Credits
+	if credits != nil {
+		var refillValue types.Object
+		if credits.Refill != nil {
+			refillModel := keyCreditsRefillModel{
+				Interval:  types.StringValue(string(credits.Refill.Interval)),
+				Amount:    types.Int64Value(credits.Refill.Amount),
+				RefillDay: types.Int64PointerValue(credits.Refill.RefillDay),
+			}
+			refillValue, diags = types.ObjectValueFrom(ctx, creditsRefillAttrTypes, refillModel)
+			resp.Diagnostics.Append(diags...)
+		} else {
+			refillValue = types.ObjectNull(creditsRefillAttrTypes)
+		}
+
+		creditsModel := keyCreditsModel{
+			Remaining: types.Int64PointerValue(credits.Remaining),
+			Refill:    refillValue,
+		}
+
+		plan.Credits, diags = types.ObjectValueFrom(ctx, creditsAttrTypes, creditsModel)
+		resp.Diagnostics.Append(diags...)
+	} else {
+		plan.Credits = types.ObjectNull(creditsAttrTypes)
+	}
+
+	// Convert Ratelimits
+	ratelimits := key.V2KeysGetKeyResponseBody.GetData().Ratelimits
+	if len(ratelimits) > 0 {
+		ratelimitModels := make([]rateLimitModel, len(ratelimits))
+		for i, rl := range ratelimits {
+			ratelimitModels[i] = rateLimitModel{
+				Name:      types.StringValue(rl.Name),
+				Limit:     types.Int64Value(rl.Limit),
+				Duration:  types.Int64Value(rl.Duration),
+				AutoApply: types.BoolValue(rl.AutoApply),
+			}
+		}
+		plan.Ratelimits, diags = types.ListValueFrom(ctx, ratelimitObjectType, ratelimitModels)
+		resp.Diagnostics.Append(diags...)
+	} else {
+		plan.Ratelimits = types.ListNull(ratelimitObjectType)
+	}
+
+	// Update last_updated timestamp
+	plan.LastUpdated = types.StringValue(time.Now().Format(time.RFC850))
+
+	// Set state
+	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
 func (r *keyResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -527,10 +845,12 @@ func (r *keyResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 		return
 	}
 
+	permanentDeletion := state.PermanentDeletion.ValueBool()
+
 	// Delete existing API
 	_, err := r.client.Keys.DeleteKey(ctx, components.V2KeysDeleteKeyRequestBody{
-		KeyID: state.KeyId.ValueString(),
-		// TODO: Permanent deletion
+		KeyID:     state.KeyId.ValueString(),
+		Permanent: &permanentDeletion,
 	})
 	if err != nil {
 		resp.Diagnostics.AddError(
