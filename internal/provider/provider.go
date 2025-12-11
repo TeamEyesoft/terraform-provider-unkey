@@ -142,5 +142,9 @@ func (p *unkeyProvider) DataSources(_ context.Context) []func() datasource.DataS
 func (p *unkeyProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewApiResource,
+		NewIdentityResource,
+		NewKeyResource,
+		NewPermissionResource,
+		NewRoleResource,
 	}
 }

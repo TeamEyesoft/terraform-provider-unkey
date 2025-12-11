@@ -19,40 +19,42 @@ import (
 	"github.com/unkeyed/sdks/api/go/v2/models/components"
 )
 
+// TODO: Finish
+
 // Ensure the implementation satisfies the expected interfaces.
 var (
-	_ resource.Resource              = &apiResource{}
-	_ resource.ResourceWithConfigure = &apiResource{}
+	_ resource.Resource              = &identityResource{}
+	_ resource.ResourceWithConfigure = &identityResource{}
 )
 
-// NewApiResource is a helper function to simplify the provider implementation.
-func NewApiResource() resource.Resource {
-	return &apiResource{}
+// NewIdentityResource is a helper function to simplify the provider implementation.
+func NewIdentityResource() resource.Resource {
+	return &identityResource{}
 }
 
 // apiResourceModel maps the resource schema data.
-type apiResourceModel struct {
-	ApiId       types.String `tfsdk:"id"`
+type identityResourceModel struct {
+	ApiId       types.String `tfsdk:"api_id"`
 	Name        types.String `tfsdk:"name"`
 	LastUpdated types.String `tfsdk:"last_updated"`
 }
 
-// apiResource is the resource implementation.
-type apiResource struct {
+// identityResource is the resource implementation.
+type identityResource struct {
 	client *unkey.Unkey
 }
 
 // Metadata returns the resource type name.
-func (r *apiResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_api"
+func (r *identityResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_identity"
 }
 
 // Schema defines the schema for the resource.
-func (r *apiResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *identityResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "Manages an API resource.",
 		Attributes: map[string]schema.Attribute{
-			"id": schema.StringAttribute{
+			"api_id": schema.StringAttribute{
 				Description: "Unique identifier of the API resource.",
 				Computed:    true,
 				PlanModifiers: []planmodifier.String{
@@ -79,9 +81,9 @@ func (r *apiResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 }
 
 // Create a new resource.
-func (r *apiResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *identityResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	// Retrieve values from plan
-	var plan apiResourceModel
+	var plan identityResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -113,9 +115,9 @@ func (r *apiResource) Create(ctx context.Context, req resource.CreateRequest, re
 }
 
 // Read resource information.
-func (r *apiResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *identityResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	// Get current state
-	var state apiResourceModel
+	var state identityResourceModel
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -145,13 +147,13 @@ func (r *apiResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	}
 }
 
-func (r *apiResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *identityResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	return
 }
 
-func (r *apiResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *identityResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	// Retrieve values from state
-	var state apiResourceModel
+	var state identityResourceModel
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -172,7 +174,7 @@ func (r *apiResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 }
 
 // Configure adds the provider configured client to the resource.
-func (r *apiResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *identityResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Add a nil check when handling ProviderData because Terraform
 	// sets that data after it calls the ConfigureProvider RPC.
 	if req.ProviderData == nil {
